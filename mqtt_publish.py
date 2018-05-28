@@ -3,9 +3,16 @@ import time
 import ntplib
 import datetime
 
-client_ntp = ntplib.NTPClient()
-diff = None
-
+offset = None
+while offset==None:
+    try:
+        client_ntp = ntplib.NTPClient()
+        response = client_ntp.request('0.pool.ntp.org', version=3)
+        offset = datetime.timedelta(0,response.offset)
+        print "laiko sikrtumas: ", offset
+    except:
+        print "ntp connection failed"
+        
 broker_address= "185.80.128.169"  #Broker address
 port = 8883                         #Broker port
 user = "ed_test"                    #Connection username
@@ -19,21 +26,30 @@ client.connect(broker_address, port=port)          #connect to broker
  
 client.loop_start()
 
-time_to_stop = time.time() + 60 * 60
+time_to_stop = time.time() + 30 * 60
+time_to_sync = time.time() + 1 * 60
 
+print "begin at: ", datetime.datetime.now() + offset
 client.publish("testtopic", "begin")
 while time.time() < time_to_stop:
+    if time.time() > time_to_sync:
+        time_to_sync = time.time() + 1 * 60
+        try:
+            client_ntp = ntplib.NTPClient()
+            response = client_ntp.request('0.pool.ntp.org', version=3)
+            offset = datetime.timedelta(0,response.offset)
+            print offset
+        except:
+            print "ntp connection failed"
     try:
-        client_ntp = ntplib.NTPClient()
-        response = client_ntp.request('0.pool.ntp.org', version=3)
-        if response:
-            client.publish("testtopic", str(datetime.datetime.now()+datetime.timedelta(0,response.offset)))
-        print "sent", str(datetime.datetime.now()+datetime.timedelta(0,response.offset))
+        client.publish("testtopic", str(datetime.datetime.now()+offset))
+        print "sent"
     except:
-        print "ntp connection failed"
-        continue
-    time.sleep(5)
+        print "failed to publish"
+    time.sleep(0.5)
 
 client.publish("testtopic", "end")
 client.loop_stop()
 client.disconnect()
+
+print "ended at: ", datetime.datetime.now() + offset
